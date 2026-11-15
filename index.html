@@ -300,6 +300,17 @@ async function submit(){
     done(r,n);
   }catch(e){err('Bağlantı hatası, lütfen tekrar deneyin.');go.disabled=false;go.textContent='Randevuyu Onayla'}
 }
+function addCal(r,n){
+  const z=m=>new Date(Date.UTC(+r.gun.slice(0,4),+r.gun.slice(5,7)-1,+r.gun.slice(8,10),0,m-180)).toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
+  const al=(m,t)=>`BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT${m}M\r\nDESCRIPTION:${t}\r\nEND:VALARM\r\n`;
+  const ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Master Kuafor//TR\r\nCALSCALE:GREGORIAN\r\nBEGIN:VEVENT\r\n'
+   +`UID:${r.token}@masterkuafor\r\nDTSTAMP:${new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'')}\r\n`
+   +`DTSTART:${z(r.bas)}\r\nDTEND:${z(r.bas+r.sure)}\r\nSUMMARY:Master Kuaför - ${r.hizmet}\r\n`
+   +`LOCATION:${(CONFIG.address||'').replace(/,/g,'\\,')}\r\nDESCRIPTION:${r.hizmet} randevusu. Gelemeyecekseniz lütfen önceden haber verin.\r\n`
+   +al(60,'Master Kuaför randevunuz 1 saat sonra')+al(15,'Master Kuaför randevunuz 15 dakika sonra')+'END:VEVENT\r\nEND:VCALENDAR\r\n';
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([ics],{type:'text/calendar;charset=utf-8'}));a.download='master-kuafor-randevu.ics';
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);
+}
 function done(r,n){
   const D=new Date(r.gun+'T12:00'),gunTxt=D.toLocaleDateString('tr-TR',{day:'numeric',month:'long',weekday:'long'});
   const msg=encodeURIComponent(`Merhaba, ${gunTxt} ${hm(r.bas)} için ${r.hizmet} randevusu aldım. Ad: ${n}`);
@@ -307,7 +318,9 @@ function done(r,n){
     <div class="sum"><b>${r.hizmet}</b><br>${gunTxt}<br><b style="color:var(--gold2);font-size:22px">${hm(r.bas)} – ${hm(r.bas+r.sure)}</b><br>${n}</div>
     ${CONFIG.phone?`<div class="wa-step"><p><b>Son adım:</b> Randevunuzun ustaya ulaşması için aşağıdaki düğmeye basıp mesajı <b>gönderin</b>.</p><a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/${CONFIG.phone}?text=${msg}">WhatsApp'tan Ustaya Bildir</a></div>`:''}
     <p class="note" style="margin:0 0 14px">Lütfen randevu saatinde salonda olun. ${CONFIG.gecikme} dakikadan fazla gecikirseniz randevunuz iptal sayılır. Gelemeyecekseniz aşağıdan iptal edebilirsiniz.</p>
-    <div class="row"><button class="btn o" id="bki" type="button">Randevuyu iptal et</button></div></div>`;
+    <div class="row"><button class="btn g" id="bkc" type="button">📅 Takvime Ekle (alarmlı)</button><button class="btn o" id="bki" type="button">Randevuyu iptal et</button></div>
+    <p class="note">Takvime eklerseniz telefonunuz randevudan 1 saat ve 15 dakika önce alarm verir.</p></div>`;
+  $('#bkc').onclick=()=>addCal(r,n);
   $('#bki').onclick=async()=>{
     if(!confirm('Randevunuzu iptal etmek istiyor musunuz?'))return;
     try{const x=await rpc('kuafor_iptal',{p_token:r.token});
