@@ -95,6 +95,12 @@ section.alt{background:var(--bg2);border-block:1px solid var(--line)}
 .ok .big{font-size:44px}.ok h3{font-size:26px;margin:6px 0}
 .ok .sum{background:#15120f;border:1px solid var(--line);border-radius:14px;padding:16px;margin:16px 0;line-height:1.8}
 .ok .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.rule{display:flex;gap:10px;align-items:flex-start;text-align:left;max-width:760px;margin:14px auto 0;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#15120f;font-size:14px;color:var(--mut);cursor:pointer}
+.rule input{width:20px;height:20px;margin-top:2px;flex:none;accent-color:var(--gold)}
+.rule b{color:var(--tx)}
+.wa-step{background:rgba(37,211,102,.08);border:1px solid rgba(37,211,102,.45);border-radius:16px;padding:18px;margin:6px 0 14px}
+.wa-step p{color:var(--tx);margin-bottom:12px;font-size:15px}
+.btn.wa{background:#25d366;border-color:#25d366;color:#06220f;font-size:16px;padding:14px 22px;box-shadow:0 6px 18px rgba(37,211,102,.25)}
 .note{font-size:13px;color:var(--mut);margin-top:14px}
 footer{padding:28px 0 90px;text-align:center;color:var(--mut);font-size:14px;border-top:1px solid var(--line)}
 .sticky{display:none}
@@ -178,6 +184,7 @@ const CONFIG={
   mapEmbed:"https://www.google.com/maps?q=Master+Kuaf%C3%B6r+Hasanl%C4%B1+Cd.+No%3A16%2FB+%C3%87ar%C5%9Famba+Samsun&output=embed",              // Google Haritalar > Paylaş > Haritayı yerleştir'deki iframe src adresi
   instagram:"",             // kullanıcı adı, örn: "masterkuafor"
   waMessage:"Merhaba, randevu almak istiyorum.",
+  gecikme:15,          // kaç dakika geç gelen müşterinin randevusu iptal sayılır
   open:8,close:20,   // açılış / kapanış saati (Pazar kapalı)
   hours:[["Pazartesi – Cumartesi","08:00 – 20:00"],["Pazar","Kapalı"]],   // örn: "09:00 – 20:00" ya da "Kapalı"
   services:[
@@ -225,7 +232,7 @@ const rpc=async(fn,body)=>{const r=await fetch(CONFIG.sb.url+'/rest/v1/rpc/'+fn,
 const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const GUN=['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'];
-const HATA={ad:'Adınızı yazın (en az 2 harf).',tel:'Telefon numarasını 05XX XXX XX XX biçiminde yazın.',hizmet:'Hizmet seçilemedi, sayfayı yenileyin.',gun:'Bu gün için randevu alınamıyor.',pazar:'Pazar günü kapalıyız.',saat:'Bu saat geçerli değil, başka saat seçin.',gecmis:'Bu saat geçti ya da çok yakın, başka saat seçin.',limit:'Bu telefon numarasıyla en fazla 2 aktif randevu alınabilir.',dolu:'Bu saat az önce doldu, lütfen başka bir saat seçin.'};
+const HATA={ad:'Adınızı yazın (en az 2 harf).',tel:'Telefon numarasını 05XX XXX XX XX biçiminde yazın.',hizmet:'Hizmet seçilemedi, sayfayı yenileyin.',gun:'Bu gün için randevu alınamıyor.',pazar:'Pazar günü kapalıyız.',saat:'Bu saat geçerli değil, başka saat seçin.',gecmis:'Bu saat geçti ya da çok yakın, başka saat seçin.',limit:'Bu telefon numarasıyla en fazla 2 aktif randevu alınabilir.',dolu:'Bu saat az önce doldu, lütfen başka bir saat seçin.',engel:'Bu numara için online randevu şu an kapalı. Lütfen salonu arayın.',kural:'Lütfen randevu kuralını onaylayın.'};
 const BK={cfg:null,day:null,svc:null,t:null,days:[]};
 const bk=$('#bk');
 const dur=()=>{const h=BK.cfg.hizmetler.find(x=>x.ad===BK.svc);return Math.ceil((h?h.dk:BK.cfg.adim)/BK.cfg.adim)*BK.cfg.adim};
@@ -267,8 +274,9 @@ async function bkInit(){
       <h4>4 · Bilgileriniz</h4>
       <div class="form" style="margin:0"><div><label>Adınız</label><input id="bkn" autocomplete="given-name" placeholder="Adınız"></div><div><label>Telefon</label><input id="bkp" type="tel" autocomplete="tel" placeholder="05XX XXX XX XX"></div></div>
     </div>
+    <label class="rule"><input type="checkbox" id="bkk"><span><b>Randevu kuralı:</b> Randevu saatinden <b>${CONFIG.gecikme} dakika</b> sonra gelmeyen müşterinin randevusu iptal sayılır. Haber vermeden iki kez gelmeyen numaradan online randevu alınamaz.</span></label>
     <div id="bke"></div>
-    <button class="btn g" id="bkgo" type="button">Randevuyu Onayla</button>
+    <div style="margin-top:14px"><button class="btn g" id="bkgo" type="button">Randevuyu Onayla</button></div>
     <p class="note">Telefon numaranız yalnızca randevunuz için kullanılır. Damat traşı gibi uzun işler için sistem otomatik olarak ardışık saatleri ayırır.</p>`;
     $('#bks').onchange=e=>{BK.svc=e.target.value;BK.t=null;paintTimes()};
     $('#bkd').onclick=e=>{const b=e.target.closest('button');if(b)loadDay(b.dataset.d)};
@@ -284,6 +292,7 @@ async function submit(){
   if(BK.t==null)return err('Lütfen bir saat seçin.');
   const n=$('#bkn').value.trim(),p=$('#bkp').value.trim();
   if(n.length<2)return err(HATA.ad);
+  if(!$('#bkk').checked)return err(HATA.kural);
   const go=$('#bkgo');go.disabled=true;go.textContent='Randevu ayrılıyor…';
   try{
     const r=await rpc('kuafor_randevu_al',{p_ad:n,p_tel:p,p_hizmet:BK.svc,p_gun:BK.day,p_bas:BK.t});
@@ -296,8 +305,9 @@ function done(r,n){
   const msg=encodeURIComponent(`Merhaba, ${gunTxt} ${hm(r.bas)} için ${r.hizmet} randevusu aldım. Ad: ${n}`);
   bk.innerHTML=`<div class="ok"><div class="big">✅</div><h3>Randevunuz alındı</h3>
     <div class="sum"><b>${r.hizmet}</b><br>${gunTxt}<br><b style="color:var(--gold2);font-size:22px">${hm(r.bas)} – ${hm(r.bas+r.sure)}</b><br>${n}</div>
-    <div class="row">${CONFIG.phone?`<a class="btn o" target="_blank" rel="noopener" href="https://wa.me/${CONFIG.phone}?text=${msg}">Salona WhatsApp'tan haber ver</a>`:''}<button class="btn o" id="bki" type="button">Randevuyu iptal et</button></div>
-    <p class="note">Randevu saatinden 5 dakika önce salonda olmanızı rica ederiz. Bu ekranı kapatmadan önce saati not alın.</p></div>`;
+    ${CONFIG.phone?`<div class="wa-step"><p><b>Son adım:</b> Randevunuzun ustaya ulaşması için aşağıdaki düğmeye basıp mesajı <b>gönderin</b>.</p><a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/${CONFIG.phone}?text=${msg}">WhatsApp'tan Ustaya Bildir</a></div>`:''}
+    <p class="note" style="margin:0 0 14px">Lütfen randevu saatinde salonda olun. ${CONFIG.gecikme} dakikadan fazla gecikirseniz randevunuz iptal sayılır. Gelemeyecekseniz aşağıdan iptal edebilirsiniz.</p>
+    <div class="row"><button class="btn o" id="bki" type="button">Randevuyu iptal et</button></div></div>`;
   $('#bki').onclick=async()=>{
     if(!confirm('Randevunuzu iptal etmek istiyor musunuz?'))return;
     try{const x=await rpc('kuafor_iptal',{p_token:r.token});
